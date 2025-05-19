@@ -5,8 +5,10 @@
 #include <fstream>
 #include <algorithm>
 #include <exception>
+#include <sstream>
+#include <clocale>
+#include <Windows.h>
 
-// Исключения
 class InvalidDataException : public std::exception {
     std::string msg;
 public:
@@ -14,7 +16,6 @@ public:
     const char* what() const noexcept override { return msg.c_str(); }
 };
 
-// 1. Базовый класс User
 class User {
 private:
     std::string name;
@@ -29,49 +30,46 @@ public:
     }
     virtual ~User() = default;
 
-    // Геттеры и сеттеры с проверками
     std::string getName() const { return name; }
     void setName(const std::string& n) {
-        if (n.empty()) throw InvalidDataException("Name cannot be empty");
+        if (n.empty()) throw InvalidDataException("Имя не может быть пустым");
         name = n;
     }
 
     int getId() const { return id; }
     void setId(int i) {
-        if (i < 0) throw InvalidDataException("ID must be non-negative");
+        if (i < 0) throw InvalidDataException("ID должен быть неотрицательным");
         id = i;
     }
 
     int getAccessLevel() const { return accessLevel; }
     void setAccessLevel(int level) {
-        if (level < 0) throw InvalidDataException("Access level must be non-negative");
+        if (level < 0) throw InvalidDataException("Уровень доступа должен быть неотрицательным");
         accessLevel = level;
     }
 
     virtual void displayInfo() const {
-        std::cout << "User: " << name << ", ID: " << id << ", Access Level: " << accessLevel << std::endl;
+        std::cout << "Пользователь: " << name << ", ID: " << id << ", Уровень доступа: " << accessLevel << std::endl;
     }
     virtual std::string serialize() const {
         return name + "," + std::to_string(id) + "," + std::to_string(accessLevel);
     }
-    // Для поиска и сортировки можно добавить дополнительные сравнения
 };
 
-// 2. Производные классы
 class Student : public User {
 private:
     std::string group;
 
 public:
-    Student(const std::string& n, int i, int level, const std::string& g) 
+    Student(const std::string& n, int i, int level, const std::string& g)
         : User(n, i, level), group(g) {}
 
     std::string getGroup() const { return group; }
     void setGroup(const std::string& g) { group = g; }
 
     void displayInfo() const override {
-        std::cout << "Student: " << getName() << ", ID: " << getId()
-                  << ", Access Level: " << getAccessLevel() << ", Group: " << group << std::endl;
+        std::cout << "Студент: " << getName() << ", ID: " << getId()
+            << ", Уровень доступа: " << getAccessLevel() << ", Группа: " << group << std::endl;
     }
     std::string serialize() const override {
         return "Student," + User::serialize() + "," + group;
@@ -90,8 +88,8 @@ public:
     void setDepartment(const std::string& dep) { department = dep; }
 
     void displayInfo() const override {
-        std::cout << "Teacher: " << getName() << ", ID: " << getId()
-                  << ", Access Level: " << getAccessLevel() << ", Department: " << department << std::endl;
+        std::cout << "Преподаватель: " << getName() << ", ID: " << getId()
+            << ", Уровень доступа: " << getAccessLevel() << ", Кафедра: " << department << std::endl;
     }
     std::string serialize() const override {
         return "Teacher," + User::serialize() + "," + department;
@@ -110,15 +108,14 @@ public:
     void setRole(const std::string& r) { role = r; }
 
     void displayInfo() const override {
-        std::cout << "Administrator: " << getName() << ", ID: " << getId()
-                  << ", Access Level: " << getAccessLevel() << ", Role: " << role << std::endl;
+        std::cout << "Администратор: " << getName() << ", ID: " << getId()
+            << ", Уровень доступа: " << getAccessLevel() << ", Роль: " << role << std::endl;
     }
     std::string serialize() const override {
         return "Administrator," + User::serialize() + "," + role;
     }
 };
 
-// 4. Ресурс университета
 class Resource {
 private:
     std::string name;
@@ -126,12 +123,12 @@ private:
 
 public:
     Resource(const std::string& n, int level) : name(n), requiredAccessLevel(level) {
-        if (level < 0) throw InvalidDataException("Resource access level must be non-negative");
+        if (level < 0) throw InvalidDataException("Уровень доступа к ресурсу должен быть неотрицательным");
     }
 
     std::string getName() const { return name; }
 
-int getRequiredAccessLevel() const { return requiredAccessLevel; }
+    int getRequiredAccessLevel() const { return requiredAccessLevel; }
 
     bool checkAccess(const User& user) const {
         return user.getAccessLevel() >= requiredAccessLevel;
@@ -141,7 +138,6 @@ int getRequiredAccessLevel() const { return requiredAccessLevel; }
     }
 };
 
-// 6. Шаблонный класс AccessControlSystem
 template<typename UserType, typename ResourceType>
 class AccessControlSystem {
 private:
@@ -158,16 +154,20 @@ public:
     }
 
     void checkAccessAll() {
+        std::cout << "\n=== ПРОВЕРКА ДОСТУПОВ ===\n";
         for (auto& user : users) {
-            std::cout << "Access info for " << user->getName() << ":" << std::endl;
+            user->displayInfo();
+            std::cout << "Доступ к ресурсам:\n";
             for (auto& res : resources) {
                 bool canAccess = res->checkAccess(*user);
-                std::cout << "  Resource " << res->getName() << ": " << (canAccess ? "Access granted" : "Access denied") << std::endl;
+                std::cout << "  • " << res->getName() << ": "
+                    << (canAccess ? "[ДОСТУП РАЗРЕШЕН]" : "[ДОСТУП ЗАПРЕЩЕН]")
+                    << " (требуется уровень " << res->getRequiredAccessLevel() << ")\n";
             }
+            std::cout << std::endl;
         }
     }
 
-    // Поиск пользователей
     std::shared_ptr<UserType> findUserByName(const std::string& name) {
         for (auto& u : users) {
             if (u->getName() == name) return u;
@@ -182,15 +182,13 @@ public:
         return nullptr;
     }
 
-    // Сортировка по уровню доступа
     void sortUsersByAccessLevel() {
         std::sort(users.begin(), users.end(),
-                  [](const std::shared_ptr<UserType>& a, const std::shared_ptr<UserType>& b) {
-                      return a->getAccessLevel() < b->getAccessLevel();
-                  });
+            [](const std::shared_ptr<UserType>& a, const std::shared_ptr<UserType>& b) {
+                return a->getAccessLevel() < b->getAccessLevel();
+            });
     }
 
-    // Сохранение и загрузка из файла
     void saveUsersToFile(const std::string& filename) {
         std::ofstream file(filename);
         if (!file) throw std::runtime_error("Cannot open file for writing");
@@ -209,19 +207,16 @@ public:
             try {
                 auto user = parseUser(line);
                 if (user) users.push_back(user);
-            } catch (const std::exception& e) {
+            }
+            catch (const std::exception& e) {
                 std::cerr << "Failed to parse user: " << e.what() << std::endl;
             }
         }
         file.close();
     }
 
-    // Аналогично можно сделать для ресурсов...
-
 private:
-    // Распарсить строку и создать новый user
     std::shared_ptr<UserType> parseUser(const std::string& line) {
-        // Формат: Type,name,id,accessLevel,[group/department/role]
         std::istringstream iss(line);
         std::string type, name, groupDepRole;
         int id, accessLevel;
@@ -231,26 +226,66 @@ private:
 
         type = line.substr(0, pos1);
         std::string rest = line.substr(pos1 + 1);
-        // Используем std::getline для парсинга
         std::istringstream ss(rest);
         std::string idStr, accessLevelStr;
 
         std::getline(ss, name, ',');
         std::getline(ss, idStr, ',');
         std::getline(ss, accessLevelStr, ',');
-        if (!std::getline(ss, groupDepRole, ',')) groupDepRole = "";
+        if (!std::getline(ss, groupDepRole)) groupDepRole = "";
 
-        id = std::stoi(idStr);
-        accessLevel = std::stoi(accessLevelStr);
+        try {
+            id = std::stoi(idStr);
+            accessLevel = std::stoi(accessLevelStr);
+        }
+        catch (const std::exception& e) {
+            throw InvalidDataException("Invalid ID or access level format");
+        }
 
         if (type == "Student") {
             return std::make_shared<Student>(name, id, accessLevel, groupDepRole);
-        } else if (type == "Teacher") {
+        }
+        else if (type == "Teacher") {
             return std::make_shared<Teacher>(name, id, accessLevel, groupDepRole);
-        } else if (type == "Administrator") {
+        }
+        else if (type == "Administrator") {
             return std::make_shared<Administrator>(name, id, accessLevel, groupDepRole);
-} else {
+        }
+        else {
             throw InvalidDataException("Unknown user type");
         }
     }
 };
+
+int main() {
+    setlocale(LC_ALL, "Russian");
+    SetConsoleOutputCP(CP_UTF8);
+
+    try {
+        AccessControlSystem<User, Resource> system;
+
+        auto student = std::make_shared<Student>("Екатерина Бочарова", 1, 1, "Группа 101");
+        auto teacher = std::make_shared<Teacher>("Сергей Петров", 2, 3, "Кафедра математики");
+        auto admin = std::make_shared<Administrator>("Ксения Зайцева", 3, 5, "Главный администратор");
+
+        system.addUser(student);
+        system.addUser(teacher);
+        system.addUser(admin);
+
+        auto library = std::make_shared<Resource>("Библиотека", 1);
+        auto lab = std::make_shared<Resource>("Компьютерный класс", 3);
+        auto serverRoom = std::make_shared<Resource>("Серверная", 5);
+
+        system.addResource(library);
+        system.addResource(lab);
+        system.addResource(serverRoom);
+
+        system.checkAccessAll();
+
+        return 0;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Ошибка: " << e.what() << std::endl;
+        return 1;
+    }
+}
